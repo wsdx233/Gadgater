@@ -45,4 +45,7 @@
     <string name="error_occurred">出错了</string>
     <string name="processing_failed">处理失败</string>
     <string name="back_to_home">返回主页</string>
+    <string name="arch_selection_title">目标架构</string>
+    <string name="arch_auto_detect">自动检测</string>
+    <string name="arch_manual_select">手动选择</string>
 </resources>

@@ -2,6 +2,11 @@ package top.wsdx233.gadgeter.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +28,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -190,9 +197,20 @@ fun ProcessingScreen(
                 val fridaVersion = if (vFile.exists()) vFile.readText() else "16.2.1"
 
                 val architecturesPresent = libDir.listFiles()?.map { it.name } ?: emptyList()
+                
+                // Read architecture config
+                val archModeFile = File(context.cacheDir, "gadget_arch_mode.txt")
+                val archMode = if (archModeFile.exists()) archModeFile.readText().toIntOrNull() ?: 0 else 0
+                val archListFile = File(context.cacheDir, "gadget_arch_list.txt")
+                val manualArchs = if (archListFile.exists()) archListFile.readText().split(",").filter { it.isNotBlank() } else emptyList()
+                
                 // Built-in asset is arm (armeabi-v7a) only, so force that architecture
                 val archsToFetch = if (sourceType == 2) {
                     listOf("armeabi-v7a")
+                } else if (archMode == 1 && manualArchs.isNotEmpty()) {
+                    // User manually selected architectures
+                    log("Using manually selected architectures: ${manualArchs.joinToString(", ")}")
+                    manualArchs
                 } else if (architecturesPresent.isEmpty()) {
                     listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
                 } else {
@@ -416,15 +434,43 @@ fun ProcessingScreen(
                 exit = fadeOut(tween(300))
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Shimmer / light-sweep infinite transition
+                    val shimmerTransition = rememberInfiniteTransition(label = "shimmer")
+                    val shimmerOffset by shimmerTransition.animateFloat(
+                        initialValue = -1f,
+                        targetValue = 2f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 1800, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "shimmerOffset"
+                    )
+
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val highlightColor = MaterialTheme.colorScheme.inversePrimary
+
                     AnimatedContent(
                         targetState = currentTask,
                         transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(500)) }
                     ) { task ->
+                        val shimmerBrush = Brush.linearGradient(
+                            colors = listOf(
+                                primaryColor,
+                                highlightColor,
+                                Color.White,
+                                highlightColor,
+                                primaryColor
+                            ),
+                            start = Offset(shimmerOffset * 600f, 0f),
+                            end = Offset(shimmerOffset * 600f + 400f, 0f)
+                        )
                         Text(
                             text = task,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            style = LocalTextStyle.current.copy(
+                                brush = shimmerBrush
+                            ),
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                     }

@@ -77,6 +77,11 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
     var isConfigVisible by remember { mutableStateOf(false) }
     var fridaLocalPath by remember { mutableStateOf("") }
     var customSoName by remember { mutableStateOf("libfrida-gadget.so") }
+    
+    // Architecture selection: 0 = auto-detect, 1 = manual
+    var archMode by remember { mutableIntStateOf(0) }
+    val allArchitectures = remember { listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+    val selectedArchitectures = remember { mutableStateListOf<String>() }
     var appSearchQuery by remember { mutableStateOf("") }
 
     fun processWithConfig(apkPath: String) {
@@ -85,6 +90,16 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
             File(context.cacheDir, "gadget_version.txt").writeText(fridaVersion)
             File(context.cacheDir, "gadget_so_name.txt").writeText(customSoName.ifBlank { "libfrida-gadget.so" })
             File(context.cacheDir, "gadget_source_type.txt").writeText(selectedTab.toString())
+            
+            // Save architecture config
+            val archFile = File(context.cacheDir, "gadget_arch_mode.txt")
+            archFile.writeText(archMode.toString())
+            val archListFile = File(context.cacheDir, "gadget_arch_list.txt")
+            if (archMode == 1 && selectedArchitectures.isNotEmpty()) {
+                archListFile.writeText(selectedArchitectures.joinToString(","))
+            } else {
+                if (archListFile.exists()) archListFile.delete()
+            }
             
             val gFile = File(context.cacheDir, "gadget_local_path.txt")
             if (selectedTab == 1 && fridaLocalPath.isNotBlank()) {
@@ -284,6 +299,100 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                                     modifier = Modifier.padding(16.dp),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Architecture selection (only for Remote Download and Manual Specification)
+            AnimatedVisibility(
+                visible = selectedTab != 2,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = stringResource(R.string.arch_selection_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = archMode == 0,
+                            onClick = { archMode = 0 },
+                            label = { Text(stringResource(R.string.arch_auto_detect)) },
+                            leadingIcon = if (archMode == 0) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = archMode == 1,
+                            onClick = { archMode = 1 },
+                            label = { Text(stringResource(R.string.arch_manual_select)) },
+                            leadingIcon = if (archMode == 1) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    
+                    AnimatedVisibility(
+                        visible = archMode == 1,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                allArchitectures.forEach { arch ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (selectedArchitectures.contains(arch)) {
+                                                    selectedArchitectures.remove(arch)
+                                                } else {
+                                                    selectedArchitectures.add(arch)
+                                                }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = selectedArchitectures.contains(arch),
+                                            onCheckedChange = { checked ->
+                                                if (checked) {
+                                                    if (!selectedArchitectures.contains(arch)) selectedArchitectures.add(arch)
+                                                } else {
+                                                    selectedArchitectures.remove(arch)
+                                                }
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = arch,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

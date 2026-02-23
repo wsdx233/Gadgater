@@ -45,4 +45,7 @@
     <string name="error_occurred">Error</string>
     <string name="processing_failed">Processing Failed</string>
     <string name="back_to_home">Back to Home</string>
+    <string name="arch_selection_title">Target Architecture</string>
+    <string name="arch_auto_detect">Auto Detect</string>
+    <string name="arch_manual_select">Manual Select</string>
 </resources>
