@@ -12,10 +12,10 @@
 
 **Gadgeter** is a powerful Android application designed to automatically inject the **Frida Gadget** into any APK directly on your device. Whether you want to debug, reverse-engineer, or analyze an app without a rooted device, Gadgeter simplifies the entire process. Just select an APK, and Gadgeter will handle the decoding, injecting, repackaging, and signing—outputting a ready-to-run, debuggable masterpiece!
 
-### 📱 Screenshots
+### Screenshots
 ![Screenshots](preview/screenshots.png)
 
-### ✨ Features
+### Features
 - **On-Device Processing**: No PC required. Everything from unpacking to repackaging happens directly on your Android device.
 - **App Selection**: Pick an already installed app or choose a local APK file via the Storage Access Framework (SAF).
 - **Architecture Auto-Detection**: Automatically detects the target architecture (e.g., `arm64-v8a`, `armeabi-v7a`), with a manual selection override available.
@@ -27,7 +27,7 @@
 - **Automated Injection**: Analyzes and modifies the SMALI code to insert `System.loadLibrary("frida-gadget")` and adds the necessary `INTERNET` permissions.
 - **Repackage & Sign**: Automatically repackages the injected components and signs the final APK using a built-in certificate.
 
-### 🛠️ How it works
+### How it works
 1. **Decode**: Extracts the APK structure.
 2. **Inject**: Places `libfrida-gadget.so` into the right `/lib/<abi>/` folder.
 3. **Patch SMALI**: Modifies the application's entry point to load the Frida library.
