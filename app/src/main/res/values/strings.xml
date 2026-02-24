@@ -65,4 +65,8 @@
     <string name="builtin_cleanup_title">Architecture Cleanup</string>
     <string name="builtin_cleanup_message">Built-in library only supports armeabi-v7a. Other architecture folders will be removed during processing.</string>
     <string name="understood">Understood</string>
+
+    <string name="clear_cache">Clear Cache</string>
+    <string name="cache_cleared">Cache cleared successfully</string>
+    <string name="cache_clear_failed">Failed to clear cache</string>
 </resources>

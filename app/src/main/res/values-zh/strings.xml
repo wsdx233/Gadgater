@@ -65,4 +65,8 @@
     <string name="builtin_cleanup_title">架构清理</string>
     <string name="builtin_cleanup_message">内置库仅支持 armeabi-v7a 架构。处理过程中将自动删除其他架构文件夹。</string>
     <string name="understood">我知道了</string>
+
+    <string name="clear_cache">清除缓存</string>
+    <string name="cache_cleared">缓存已清除</string>
+    <string name="cache_clear_failed">清除缓存失败</string>
 </resources>

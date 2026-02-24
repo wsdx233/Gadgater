@@ -1,6 +1,8 @@
 package top.wsdx233.gadgeter
 
+import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -11,6 +13,18 @@ import top.wsdx233.gadgeter.ui.ResultScreen
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
+
+    fun clearCacheDir() {
+        try {
+            context.cacheDir.listFiles()?.forEach { file ->
+                file.deleteRecursively()
+            }
+            Log.d("AppNavigation", "Cache directory cleared successfully")
+        } catch (e: Exception) {
+            Log.e("AppNavigation", "Failed to clear cache directory", e)
+        }
+    }
     
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
@@ -30,7 +44,8 @@ fun AppNavigation() {
                     }
                 },
                 onError = { errorMsg ->
-                    // Optionally handle error route or back to home
+                    // Clear cache on error before going back to home
+                    clearCacheDir()
                     navController.popBackStack()
                 }
             )
@@ -40,6 +55,8 @@ fun AppNavigation() {
             ResultScreen(
                 apkPath = apkPath,
                 onBackHome = {
+                    // Clear cache when going back to home from result
+                    clearCacheDir()
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
                     }

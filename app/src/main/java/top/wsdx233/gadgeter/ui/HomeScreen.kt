@@ -99,6 +99,8 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
     val configLoadedMsg = stringResource(R.string.config_loaded)
     val configResetMsg = stringResource(R.string.config_reset)
     val noSavedConfigMsg = stringResource(R.string.no_saved_config)
+    val cacheClearedMsg = stringResource(R.string.cache_cleared)
+    val cacheClearFailedMsg = stringResource(R.string.cache_clear_failed)
 
     fun validateAndCorrectSoName(name: String): String {
         var corrected = name
@@ -260,7 +262,29 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                actions = {
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    context.cacheDir.listFiles()?.forEach { file ->
+                                        file.deleteRecursively()
+                                    }
+                                }
+                                snackbarHostState.showSnackbar(cacheClearedMsg)
+                            } catch (e: Exception) {
+                                snackbarHostState.showSnackbar(cacheClearFailedMsg)
+                            }
+                        }
+                    }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.clear_cache),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

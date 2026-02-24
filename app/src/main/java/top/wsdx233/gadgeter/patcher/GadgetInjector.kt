@@ -26,85 +26,57 @@ object GadgetInjector {
         if (!smaliFile.exists()) return false
         val lines = smaliFile.readLines().toMutableList()
 
-        val targetMethod = when (fallbackLevel) {
-            1 -> "attachBaseContext"
-            2 -> "<clinit>"
-            3 -> "onCreate"
-            else -> return false
-        }
-        
-        var methodIdx = lines.indexOfFirst {
-            it.contains(".method") && it.contains(targetMethod)
-        }
-        
-        if (methodIdx == -1 && fallbackLevel == 2) {
-            val endClassIdx = lines.indexOfFirst { it.startsWith(".source") || it.startsWith(".implements") || it.startsWith(".super") }.let { if (it == -1) 1 else it + 1 }
-            lines.add(endClassIdx, """
-                
-.method static constructor <clinit>()V
-    .registers 1
-    const-string v0, "$libName"
-    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
-    return-void
-.end method
-                
-            """.trimIndent())
+        // 统一使用 <clinit> 静态代码块进行注入，这是最安全的，绝不会引发 Context 错乱
+        val clinitIdx = lines.indexOfFirst { it.startsWith(".method") && it.contains("constructor <clinit>()V") }
+
+        if (clinitIdx == -1) {
+            // 类中没有静态代码块，直接在文件末尾追加一个
+            lines.add("")
+            lines.add(".method static constructor <clinit>()V")
+            lines.add("    .locals 1")
+            lines.add("    const-string v0, \"$libName\"")
+            lines.add("    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V")
+            lines.add("    return-void")
+            lines.add(".end method")
             smaliFile.writeText(lines.joinToString("\n"))
             return true
-        } else if (methodIdx == -1) {
-            return false
         }
 
-        val regIdx = lines.subList(methodIdx, lines.size).indexOfFirst { it.trimStart().startsWith(".registers") } + methodIdx
-        if (regIdx >= methodIdx) {
-            val current = lines[regIdx].trim().removePrefix(".registers").trim().toIntOrNull() ?: 2
-            val needed = maxOf(current, getParamCount(lines, methodIdx) + 1)
-            if (needed > current) {
-                lines[regIdx] = lines[regIdx].replace(".registers $current", ".registers $needed")
-            }
-        } else {
-            // no .registers found? Wait, Dalvik uses .locals sometimes maybe? Smali default uses .registers
-            val localsIdx = lines.subList(methodIdx, lines.size).indexOfFirst { it.trimStart().startsWith(".locals") } + methodIdx
-            if (localsIdx >= methodIdx) {
-                val current = lines[localsIdx].trim().removePrefix(".locals").trim().toIntOrNull() ?: 0
-                val needed = maxOf(current, 1)
-                if (needed > current) {
-                    lines[localsIdx] = lines[localsIdx].replace(".locals $current", ".locals $needed")
-                }
-            }
+        // 已经存在 <clinit>，在开头无损插入
+        val regIdx = lines.subList(clinitIdx, lines.size).indexOfFirst {
+            it.trimStart().startsWith(".registers") || it.trimStart().startsWith(".locals")
+        } + clinitIdx
+
+        if (regIdx >= clinitIdx) {
+            val regLine = lines[regIdx].trim()
+            val isLocals = regLine.startsWith(".locals")
+            val currentRegs = regLine.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+
+            // 寄存器数量 +1，使用新增出来的最高位寄存器，绝不污染原有变量
+            val newRegs = currentRegs + 1
+            val targetReg = "v$currentRegs"
+
+            lines[regIdx] = if (isLocals) "    .locals $newRegs" else "    .registers $newRegs"
+
+            val insertIdx = findFirstInstruction(lines, clinitIdx)
+            lines.add(insertIdx, "")
+            lines.add(insertIdx, "    invoke-static {$targetReg}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V")
+            lines.add(insertIdx, "    const-string $targetReg, \"$libName\"")
+
+            smaliFile.writeText(lines.joinToString("\n"))
+            return true
         }
 
-        val insertIdx = findFirstInstruction(lines, methodIdx)
-        lines.add(insertIdx, "    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V")
-        lines.add(insertIdx, "    const-string v0, \"$libName\"")
-        lines.add(insertIdx, "")
-
-        smaliFile.writeText(lines.joinToString("\n"))
-        return true
+        return false
     }
 
     private fun findFirstInstruction(lines: List<String>, methodStart: Int): Int {
-        val skipPrefixes = listOf(".registers", ".locals", ".param", ".prologue", ".line", ".local", "# ")
+        val skipPrefixes = listOf(".registers", ".locals", ".param", ".prologue", ".line", ".local", ".annotation")
         for (i in (methodStart + 1) until lines.size) {
             val trimmed = lines[i].trim()
-            if (trimmed.isEmpty()) continue
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
             if (skipPrefixes.none { trimmed.startsWith(it) }) return i
         }
         return methodStart + 1
-    }
-
-    private fun getParamCount(lines: List<String>, methodStart: Int): Int {
-        val sig = lines[methodStart]
-        val params = sig.substringAfter("(").substringBefore(")")
-        var count = if (!sig.contains("static")) 1 else 0
-        var i = 0
-        while (i < params.length) {
-            when {
-                params[i] == 'L' -> { count++; i = params.indexOf(';', i) + 1 }
-                params[i] == '[' -> i++
-                else -> { count++; i++ }
-            }
-        }
-        return count
     }
 }

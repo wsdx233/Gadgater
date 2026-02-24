@@ -118,70 +118,57 @@ fun ProcessingScreen(
                 progress = 0.3f
                 log("Parsing AndroidManifest for App Class...")
                 val config = ApkUtils.findAppConfig(File(apkPath))
-                log("Found application class: ${config.applicationName}")
+                log("Found application class: ${config.applicationName ?: config.mainActivityName}")
+
                 val targetClass = config.applicationName ?: config.mainActivityName
-                if (targetClass == null) {
-                    throw Exception("Could not find Application or MainActivity class to inject.")
-                }
-                
-                val dexFiles = unzippedDir.listFiles { _, name -> name.startsWith("classes") && name.endsWith(".dex") }
-                    ?.sorted() ?: emptyList()
-                    
+                if (targetClass == null) throw Exception("Could not find Application or MainActivity class.")
+
+                val dexFiles = unzippedDir.listFiles { _, name -> name.startsWith("classes") && name.endsWith(".dex") }?.sorted() ?: emptyList()
                 if (dexFiles.isEmpty()) throw Exception("No dex files found in APK!")
-                
-                var injSuccess = false
-                currentTask = injectTask
+
+                // 将格式转为 Dalvik 描述符格式
+                val targetDescriptor = "L" + targetClass.replace(".", "/") + ";"
+                var targetDexFile: File? = null
+
+                currentTask = analyzeTask
+                log("Scanning Dex files for target class...")
                 for (dexFile in dexFiles) {
-                    log("Disassembling ${dexFile.name}...")
-                    GadgetInjector.disassembleDex(dexFile, smaliDir)
-                    
-                    var injected = false
-                    
-                    val appSmaliPath = config.applicationName?.replace(".", "/")?.plus(".smali")
-                    val appSmaliFile = appSmaliPath?.let { File(smaliDir, it) }
-                    
-                    val mainActSmaliPath = config.mainActivityName?.replace(".", "/")?.plus(".smali")
-                    val mainActSmaliFile = mainActSmaliPath?.let { File(smaliDir, it) }
-
-                    // Notice the 3rd param: libNameWithoutExt logic to use the exact name of the library (without '.so', without 'lib' prefix if it's default android loadLibrary format)
-                    // System.loadLibrary("frida-gadget") looks for libfrida-gadget.so
-                    val loadLibStr = if (soName.startsWith("lib") && soName.endsWith(".so")) soName.substring(3, soName.length - 3) else libNameWithoutExt
-
-                    if (appSmaliFile != null && appSmaliFile.exists()) {
-                        log("Found Application smali: $appSmaliPath. Injecting loadLibrary...")
-                        injected = GadgetInjector.injectLoadLibrary(appSmaliFile, 1, loadLibStr)
-                        if (!injected) {
-                            log("Failed to inject into Application. Fallback to MainActivity...")
-                        }
-                    }
-
-                    if (!injected && mainActSmaliFile != null && mainActSmaliFile.exists()) {
-                        log("Found MainActivity smali: $mainActSmaliPath. Injecting loadLibrary...")
-                        injected = GadgetInjector.injectLoadLibrary(mainActSmaliFile, 2, loadLibStr) || GadgetInjector.injectLoadLibrary(mainActSmaliFile, 3, loadLibStr)
-                        if (!injected) {
-                            log("Failed to inject into MainActivity.")
-                        }
-                    }
-                    
-                    if (injected) {
-                        log("Injected successfully into ${dexFile.name}")
-                        injSuccess = true
-                        log("Reassembling dex ${dexFile.name}...")
-                        val outDex = File(workDir, dexFile.name)
-                        GadgetInjector.reassembleDex(smaliDir, outDex)
-                        // Replace old dex
-                        outDex.copyTo(dexFile, overwrite = true)
+                    val dex = com.android.tools.smali.dexlib2.DexFileFactory.loadDexFile(dexFile, com.android.tools.smali.dexlib2.Opcodes.getDefault())
+                    if (dex.classes.any { it.type == targetDescriptor }) {
+                        targetDexFile = dexFile
                         break
-                    } else {
-                        log("Target classes not found or injection failed in ${dexFile.name}.")
                     }
-                    smaliDir.deleteRecursively()
-                    smaliDir.mkdirs()
                 }
 
-                if (!injSuccess) {
-                    throw Exception("Failed to inject into any dex file!")
+                if (targetDexFile == null) {
+                    throw Exception("Target class not found in any dex file! (App might be heavily packed)")
                 }
+
+                // 仅反编译找到的那个 Dex
+                currentTask = injectTask
+                log("Target found in ${targetDexFile.name}. Disassembling...")
+                smaliDir.deleteRecursively()
+                smaliDir.mkdirs()
+
+                GadgetInjector.disassembleDex(targetDexFile, smaliDir)
+
+                val targetSmaliPath = targetClass.replace(".", "/") + ".smali"
+                val targetSmaliFile = File(smaliDir, targetSmaliPath)
+
+                val loadLibStr = if (soName.startsWith("lib") && soName.endsWith(".so")) soName.substring(3, soName.length - 3) else libNameWithoutExt
+
+                log("Injecting loadLibrary into $targetSmaliPath...")
+                val injected = GadgetInjector.injectLoadLibrary(targetSmaliFile, 1, loadLibStr)
+
+                if (injected) {
+                    log("Injected successfully! Reassembling ${targetDexFile.name}...")
+                    val outDex = File(workDir, targetDexFile.name)
+                    GadgetInjector.reassembleDex(smaliDir, outDex)
+                    outDex.copyTo(targetDexFile, overwrite = true)
+                } else {
+                    throw Exception("Injection failed: Could not patch the Smali file.")
+                }
+                smaliDir.deleteRecursively()
 
                 progress = 0.6f
 
