@@ -4,6 +4,7 @@ import android.util.Log
 
 import android.graphics.drawable.Icon
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -46,6 +47,9 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
+private const val PREFS_NAME = "gadgeter_config"
+private const val KEY_GADGET_CONFIG = "gadget_config_json"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(onStartProcessing: (String) -> Unit) {
@@ -54,6 +58,7 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
     var isLoadingApps by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf(emptyList<AppInfo>()) }
     var showAppDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     
     val defaultConfig = """
 {
@@ -84,14 +89,77 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
     val selectedArchitectures = remember { mutableStateListOf<String>() }
     var appSearchQuery by remember { mutableStateOf("") }
 
+    // Dialog states
+    var showSoNameWarningDialog by remember { mutableStateOf(false) }
+    var pendingApkPath by remember { mutableStateOf<String?>(null) }
+    var soNameCorrected by remember { mutableStateOf("") }
+
+    // String resources for snackbar messages
+    val configSavedMsg = stringResource(R.string.config_saved)
+    val configLoadedMsg = stringResource(R.string.config_loaded)
+    val configResetMsg = stringResource(R.string.config_reset)
+    val noSavedConfigMsg = stringResource(R.string.no_saved_config)
+
+    fun validateAndCorrectSoName(name: String): String {
+        var corrected = name
+        if (!corrected.startsWith("lib")) {
+            corrected = "lib$corrected"
+        }
+        if (!corrected.endsWith(".so")) {
+            corrected = "$corrected.so"
+        }
+        return corrected
+    }
+
+    fun isSoNameValid(name: String): Boolean {
+        return name.startsWith("lib") && name.endsWith(".so")
+    }
+
     fun processWithConfig(apkPath: String) {
+        // Check so name validity first
+        val soName = customSoName.ifBlank { "libfrida-gadget.so" }
+        if (!isSoNameValid(soName)) {
+            soNameCorrected = validateAndCorrectSoName(soName)
+            pendingApkPath = apkPath
+            showSoNameWarningDialog = true
+            return
+        }
+        
         coroutineScope.launch {
             File(context.cacheDir, "gadget_config.json").writeText(gadgetConfig)
             File(context.cacheDir, "gadget_version.txt").writeText(fridaVersion)
-            File(context.cacheDir, "gadget_so_name.txt").writeText(customSoName.ifBlank { "libfrida-gadget.so" })
+            File(context.cacheDir, "gadget_so_name.txt").writeText(soName)
             File(context.cacheDir, "gadget_source_type.txt").writeText(selectedTab.toString())
             
             // Save architecture config
+            val archFile = File(context.cacheDir, "gadget_arch_mode.txt")
+            archFile.writeText(archMode.toString())
+            val archListFile = File(context.cacheDir, "gadget_arch_list.txt")
+            if (archMode == 1 && selectedArchitectures.isNotEmpty()) {
+                archListFile.writeText(selectedArchitectures.joinToString(","))
+            } else {
+                if (archListFile.exists()) archListFile.delete()
+            }
+            
+            val gFile = File(context.cacheDir, "gadget_local_path.txt")
+            if (selectedTab == 1 && fridaLocalPath.isNotBlank()) {
+                gFile.writeText(fridaLocalPath)
+            } else {
+                if (gFile.exists()) gFile.delete()
+            }
+            
+            onStartProcessing(apkPath)
+        }
+    }
+
+    fun doProcessWithCurrentSoName(apkPath: String) {
+        coroutineScope.launch {
+            val soName = customSoName.ifBlank { "libfrida-gadget.so" }
+            File(context.cacheDir, "gadget_config.json").writeText(gadgetConfig)
+            File(context.cacheDir, "gadget_version.txt").writeText(fridaVersion)
+            File(context.cacheDir, "gadget_so_name.txt").writeText(soName)
+            File(context.cacheDir, "gadget_source_type.txt").writeText(selectedTab.toString())
+            
             val archFile = File(context.cacheDir, "gadget_arch_mode.txt")
             archFile.writeText(archMode.toString())
             val archListFile = File(context.cacheDir, "gadget_arch_list.txt")
@@ -195,6 +263,7 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
@@ -294,11 +363,34 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
-                                Text(
-                                    stringResource(R.string.builtin_info),
-                                    modifier = Modifier.padding(16.dp),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        stringResource(R.string.builtin_info),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+                                            .padding(12.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.tertiary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            stringResource(R.string.builtin_cleanup_message),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -333,7 +425,12 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                             leadingIcon = if (archMode == 0) {
                                 { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                             } else null,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         )
                         FilterChip(
                             selected = archMode == 1,
@@ -342,7 +439,12 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                             leadingIcon = if (archMode == 1) {
                                 { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                             } else null,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         )
                     }
                     
@@ -439,6 +541,79 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
                             fontSize = 12.sp
                         )
                     )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Save / Load / Default buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Save Button
+                        FilledTonalButton(
+                            onClick = {
+                                val prefs = context.getSharedPreferences(PREFS_NAME, 0)
+                                prefs.edit().putString(KEY_GADGET_CONFIG, gadgetConfig).apply()
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(configSavedMsg)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.save_config), fontSize = 13.sp)
+                        }
+                        
+                        // Load Button
+                        FilledTonalButton(
+                            onClick = {
+                                val prefs = context.getSharedPreferences(PREFS_NAME, 0)
+                                val saved = prefs.getString(KEY_GADGET_CONFIG, null)
+                                if (saved != null) {
+                                    gadgetConfig = saved
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(configLoadedMsg)
+                                    }
+                                } else {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(noSavedConfigMsg)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.load_config), fontSize = 13.sp)
+                        }
+                        
+                        // Default Button
+                        OutlinedButton(
+                            onClick = {
+                                gadgetConfig = defaultConfig
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(configResetMsg)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.default_config), fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
@@ -470,6 +645,67 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
             // Padding at bottom to scroll completely
             Spacer(modifier = Modifier.height(48.dp))
         }
+    }
+
+    // Library name warning dialog
+    if (showSoNameWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showSoNameWarningDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    stringResource(R.string.so_name_warning_title),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.so_name_warning_message, customSoName),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(
+                    onClick = {
+                        customSoName = soNameCorrected
+                        showSoNameWarningDialog = false
+                        pendingApkPath?.let { path ->
+                            doProcessWithCurrentSoName(path)
+                        }
+                        pendingApkPath = null
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Text(stringResource(R.string.auto_correct))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showSoNameWarningDialog = false
+                        pendingApkPath?.let { path ->
+                            doProcessWithCurrentSoName(path)
+                        }
+                        pendingApkPath = null
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.keep_as_is))
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 
     if (showVersionsDialog) {

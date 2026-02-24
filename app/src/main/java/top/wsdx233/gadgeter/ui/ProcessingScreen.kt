@@ -206,6 +206,21 @@ fun ProcessingScreen(
                 
                 // Built-in asset is arm (armeabi-v7a) only, so force that architecture
                 val archsToFetch = if (sourceType == 2) {
+                    // Clean up non-armeabi-v7a architecture folders for built-in mode
+                    log("Built-in mode: only armeabi-v7a is supported.")
+                    val existingArchDirs = libDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
+                    for (archDir in existingArchDirs) {
+                        if (archDir.name != "armeabi-v7a") {
+                            log("Removing unsupported architecture folder: ${archDir.name}")
+                            val deleted = archDir.deleteRecursively()
+                            if (deleted) {
+                                log("Successfully deleted ${archDir.name} folder and its contents.")
+                            } else {
+                                log("Warning: failed to delete ${archDir.name} folder.")
+                            }
+                        }
+                    }
+                    log("Architecture cleanup complete. Only armeabi-v7a will be used.")
                     listOf("armeabi-v7a")
                 } else if (archMode == 1 && manualArchs.isNotEmpty()) {
                     // User manually selected architectures

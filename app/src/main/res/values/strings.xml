@@ -48,4 +48,21 @@
     <string name="arch_selection_title">Target Architecture</string>
     <string name="arch_auto_detect">Auto Detect</string>
     <string name="arch_manual_select">Manual Select</string>
+
+    <string name="save_config">Save</string>
+    <string name="load_config">Load</string>
+    <string name="default_config">Default</string>
+    <string name="config_saved">Configuration saved</string>
+    <string name="config_loaded">Configuration loaded</string>
+    <string name="config_reset">Configuration reset to default</string>
+    <string name="no_saved_config">No saved configuration found</string>
+
+    <string name="so_name_warning_title">Library Name Warning</string>
+    <string name="so_name_warning_message">The library name "%1$s" does not follow the standard Android naming convention. It should start with "lib" and end with ".so" (e.g. libfrida-gadget.so).\n\nDo you want to auto-correct it?</string>
+    <string name="auto_correct">Auto Correct</string>
+    <string name="keep_as_is">Keep As Is</string>
+
+    <string name="builtin_cleanup_title">Architecture Cleanup</string>
+    <string name="builtin_cleanup_message">Built-in library only supports armeabi-v7a. Other architecture folders will be removed during processing.</string>
+    <string name="understood">Understood</string>
 </resources>

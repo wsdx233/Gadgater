@@ -48,4 +48,21 @@
     <string name="arch_selection_title">目标架构</string>
     <string name="arch_auto_detect">自动检测</string>
     <string name="arch_manual_select">手动选择</string>
+
+    <string name="save_config">保存</string>
+    <string name="load_config">加载</string>
+    <string name="default_config">默认</string>
+    <string name="config_saved">配置已保存</string>
+    <string name="config_loaded">配置已加载</string>
+    <string name="config_reset">配置已恢复为默认值</string>
+    <string name="no_saved_config">未找到已保存的配置</string>
+
+    <string name="so_name_warning_title">库名称警告</string>
+    <string name="so_name_warning_message">库名称 "%1$s" 不符合 Android 标准命名规范。名称应以 "lib" 开头并以 ".so" 结尾（例如 libfrida-gadget.so）。\n\n是否自动修正？</string>
+    <string name="auto_correct">自动修正</string>
+    <string name="keep_as_is">保持原样</string>
+
+    <string name="builtin_cleanup_title">架构清理</string>
+    <string name="builtin_cleanup_message">内置库仅支持 armeabi-v7a 架构。处理过程中将自动删除其他架构文件夹。</string>
+    <string name="understood">我知道了</string>
 </resources>
