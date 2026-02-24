@@ -22,15 +22,26 @@ object GadgetInjector {
         Smali.assemble(options, listOf(smaliDir.absolutePath))
     }
 
-    fun injectLoadLibrary(smaliFile: File, fallbackLevel: Int = 1, libName: String = "frida-gadget"): Boolean {
+    fun injectLoadLibrary(smaliFile: File, libName: String = "frida-gadget"): Boolean {
         if (!smaliFile.exists()) return false
         val lines = smaliFile.readLines().toMutableList()
 
-        // 统一使用 <clinit> 静态代码块进行注入，这是最安全的，绝不会引发 Context 错乱
-        val clinitIdx = lines.indexOfFirst { it.startsWith(".method") && it.contains("constructor <clinit>()V") }
+        // 1. 查找是否存在 <clinit> 静态代码块
+        var clinitStartIdx = -1
+        var clinitEndIdx = -1
+        for (i in lines.indices) {
+            val line = lines[i].trim()
+            if (line.startsWith(".method") && line.contains("static") && line.contains("constructor <clinit>()V")) {
+                clinitStartIdx = i
+            }
+            if (clinitStartIdx != -1 && line.startsWith(".end method")) {
+                clinitEndIdx = i
+                break
+            }
+        }
 
-        if (clinitIdx == -1) {
-            // 类中没有静态代码块，直接在文件末尾追加一个
+        // 2. 如果不存在 <clinit>，最完美的状况！直接在文件末尾无损追加一个。
+        if (clinitStartIdx == -1) {
             lines.add("")
             lines.add(".method static constructor <clinit>()V")
             lines.add("    .locals 1")
@@ -42,41 +53,60 @@ object GadgetInjector {
             return true
         }
 
-        // 已经存在 <clinit>，在开头无损插入
-        val regIdx = lines.subList(clinitIdx, lines.size).indexOfFirst {
-            it.trimStart().startsWith(".registers") || it.trimStart().startsWith(".locals")
-        } + clinitIdx
+        // 3. 如果存在 <clinit>，我们需要在开头无损插入
+        var regIdx = -1
+        var isLocals = false
+        var currentRegs = 0
 
-        if (regIdx >= clinitIdx) {
-            val regLine = lines[regIdx].trim()
-            val isLocals = regLine.startsWith(".locals")
-            val currentRegs = regLine.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-
-            // 寄存器数量 +1，使用新增出来的最高位寄存器，绝不污染原有变量
-            val newRegs = currentRegs + 1
-            val targetReg = "v$currentRegs"
-
-            lines[regIdx] = if (isLocals) "    .locals $newRegs" else "    .registers $newRegs"
-
-            val insertIdx = findFirstInstruction(lines, clinitIdx)
-            lines.add(insertIdx, "")
-            lines.add(insertIdx, "    invoke-static {$targetReg}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V")
-            lines.add(insertIdx, "    const-string $targetReg, \"$libName\"")
-
-            smaliFile.writeText(lines.joinToString("\n"))
-            return true
+        // 寻找寄存器声明
+        for (i in clinitStartIdx until clinitEndIdx) {
+            val line = lines[i].trim()
+            if (line.startsWith(".locals ")) {
+                regIdx = i
+                isLocals = true
+                currentRegs = line.substringAfter(".locals").trim().toIntOrNull() ?: 0
+                break
+            } else if (line.startsWith(".registers ")) {
+                regIdx = i
+                isLocals = false
+                currentRegs = line.substringAfter(".registers").trim().toIntOrNull() ?: 0
+                break
+            }
         }
 
-        return false
-    }
-
-    private fun findFirstInstruction(lines: List<String>, methodStart: Int): Int {
-        val skipPrefixes = listOf(".registers", ".locals", ".param", ".prologue", ".line", ".local", ".annotation")
-        for (i in (methodStart + 1) until lines.size) {
-            val trimmed = lines[i].trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-            if (skipPrefixes.none { trimmed.startsWith(it) }) return i
+        if (regIdx == -1) {
+            // 极端罕见情况：有 <clinit> 但没有声明寄存器，主动加上
+            regIdx = clinitStartIdx
+            lines.add(regIdx + 1, "    .locals 1")
+            currentRegs = 0
+            isLocals = true
+            regIdx++
+            clinitEndIdx++
         }
-        return methodStart + 1
+
+        // 4. 安全策略：将寄存器数量 +1，使用新增出来的最高位寄存器！绝不污染原有的 v0, v1
+        val newRegs = currentRegs + 1
+        val targetReg = "v$currentRegs" // 例如原来是2 (v0, v1)，+1后变成3，我们就用新增的 v2
+
+        // 更新寄存器数量
+        lines[regIdx] = if (isLocals) "    .locals $newRegs" else "    .registers $newRegs"
+
+        // 5. 寻找安全的插入点 (跳过 .param, .prologue, .line 等前置伪指令)
+        var insertIdx = regIdx + 1
+        for (i in (regIdx + 1) until clinitEndIdx) {
+            val line = lines[i].trim()
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith(".param") || line.startsWith(".prologue") || line.startsWith(".line") || line.startsWith(".annotation")) {
+                insertIdx = i + 1
+            } else {
+                break
+            }
+        }
+
+        // 6. 插入注入代码
+        lines.add(insertIdx, "    invoke-static {$targetReg}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V")
+        lines.add(insertIdx, "    const-string $targetReg, \"$libName\"")
+
+        smaliFile.writeText(lines.joinToString("\n"))
+        return true
     }
 }

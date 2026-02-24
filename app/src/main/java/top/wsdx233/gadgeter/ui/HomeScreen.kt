@@ -64,9 +64,9 @@ fun HomeScreen(onStartProcessing: (String) -> Unit) {
 {
   "interaction": {
     "type": "listen",
+    "address": "127.0.0.1",
     "port": 27042,
-    "on_port_conflict": "fail",
-    "on_load": "wait"
+    "on_load": "resume"
   }
 }
     """.trimIndent()

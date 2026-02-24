@@ -152,13 +152,27 @@ fun ProcessingScreen(
 
                 GadgetInjector.disassembleDex(targetDexFile, smaliDir)
 
-                val targetSmaliPath = targetClass.replace(".", "/") + ".smali"
-                val targetSmaliFile = File(smaliDir, targetSmaliPath)
+                val appSmaliPath = config.applicationName?.replace(".", "/")?.plus(".smali")
+                val mainActSmaliPath = config.mainActivityName?.replace(".", "/")?.plus(".smali")
+
+                val appSmaliFile = appSmaliPath?.let { File(smaliDir, it) }
+                val mainActSmaliFile = mainActSmaliPath?.let { File(smaliDir, it) }
 
                 val loadLibStr = if (soName.startsWith("lib") && soName.endsWith(".so")) soName.substring(3, soName.length - 3) else libNameWithoutExt
 
-                log("Injecting loadLibrary into $targetSmaliPath...")
-                val injected = GadgetInjector.injectLoadLibrary(targetSmaliFile, 1, loadLibStr)
+                var injected = false
+
+                // 优先注入 Application
+                if (appSmaliFile != null && appSmaliFile.exists()) {
+                    log("Found Application smali: $appSmaliPath. Injecting loadLibrary...")
+                    injected = GadgetInjector.injectLoadLibrary(appSmaliFile, loadLibStr)
+                }
+
+                // 如果没有 Application，注入 MainActivity
+                if (!injected && mainActSmaliFile != null && mainActSmaliFile.exists()) {
+                    log("Found MainActivity smali: $mainActSmaliPath. Injecting loadLibrary...")
+                    injected = GadgetInjector.injectLoadLibrary(mainActSmaliFile, loadLibStr)
+                }
 
                 if (injected) {
                     log("Injected successfully! Reassembling ${targetDexFile.name}...")
