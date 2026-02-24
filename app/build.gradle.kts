@@ -13,8 +13,8 @@ android {
         applicationId = "top.wsdx233.gadgeter"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20260224
-        versionName = "0.1.0"
+        versionCode = 20260225
+        versionName = "0.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
