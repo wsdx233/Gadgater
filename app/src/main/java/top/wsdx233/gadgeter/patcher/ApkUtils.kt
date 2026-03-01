@@ -62,8 +62,11 @@ object ApkUtils {
                     entry.compressedSize = file.length()
                     val crc = java.util.zip.CRC32()
                     file.inputStream().use { input ->
-                        val bytes = input.readBytes()
-                        crc.update(bytes)
+                        val buffer = ByteArray(8192) // 8KB 的缓冲区
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            crc.update(buffer, 0, bytesRead) // 分块更新 CRC
+                        }
                         entry.crc = crc.value
                     }
                 }
